@@ -1448,6 +1448,7 @@
 <script>
   const SUPABASE_URL = 'https://xentxpttnrgtiqqrbgom.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhlbnR4cHR0bnJndGlxcXJiZ29tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNDY0MTcsImV4cCI6MjA5MzcyMjQxN30.8pacFf-OZvtfvCFIslx-7InhSmk9tFbZzoydPY-Lwzs';
+  const API_BASE_URL = 'https://stance-health-backend.onrender.com';
   const supabaseClient = window.supabase && !SUPABASE_ANON_KEY.includes('PASTE_')
     ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
     : null;
@@ -1460,13 +1461,19 @@
   }
 
   async function insertRow(table, payload) {
-    if (!requireSupabase()) return null;
-    const { data, error } = await supabaseClient.from(table).insert(payload).select().single();
-    if (error) {
-      console.error(`Supabase ${table} insert failed`, error, payload);
-      showToast(`Supabase ${table} error: ${error.message}`);
+    const endpoint = table === 'appointments' ? '/api/public/appointments' : '/api/public/profile';
+    const resp = await fetch(`${API_BASE_URL}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      console.error(`Backend ${table} save failed`, data, payload);
+      showToast(data.error || `Unable to save ${table}`);
       return null;
     }
+    // Return full response so callers can access portalLink, patient, appointment etc.
     return data;
   }
   // CALENDAR
@@ -1694,19 +1701,27 @@
       status: 'new'
     };
 
-    const onboarding = await insertRow('onboarding', profilePayload);
-    const patient = await insertRow('patients', {
-      ...profilePayload,
-      current_status: 'on-track',
-      risk_level: 'stable'
-    });
-    savedPatientRecord = patient || onboarding || profilePayload;
+    const fullData = await insertRow('patients', profilePayload);
+    if (!fullData) return;
 
-    showToast('Profile saved! Welcome, ' + firstName);
+    savedPatientRecord = fullData.patient || null;
+    const portalLink = fullData.portalLink || null;
+
+    if (portalLink) {
+      showToast('✅ Profile saved! Check your email to access your patient portal.');
+      const banner = document.createElement('div');
+      banner.style.cssText = 'background:#e8f5e9;border:1px solid #a5d6a7;border-radius:10px;padding:14px 18px;margin:16px 0;font-size:14px;color:#1b5e20;line-height:1.6';
+      banner.innerHTML = `<strong>✅ Your account is ready!</strong><br>A login link has been sent to <strong>${email}</strong>. Click it to access your patient portal and view your appointments and recovery plan.`;
+      const profileTab = document.getElementById('tab-profile');
+      if (profileTab) profileTab.prepend(banner);
+    } else {
+      showToast('✅ Profile saved! Welcome, ' + firstName);
+    }
+
     setTimeout(() => {
       document.querySelectorAll('.tab')[1].click();
       switchTab('booking', document.querySelectorAll('.tab')[1]);
-    }, 1200);
+    }, 1800);
   };
 
   // TOAST
