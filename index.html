@@ -1620,6 +1620,35 @@
     }, 400);
   }
 
+
+  // ── COHORT DETECTION ───────────────────────────────────────
+  // Classify patient into behavior cohort based on onboarding signals
+  // Used to personalise follow-up language, exercise cadence, and risk thresholds
+  function detectPrimaryCohort() {
+    const activity = (document.getElementById('activity')?.value || '').toLowerCase();
+    const concern = (document.getElementById('concern')?.value || '').toLowerCase();
+    const history = (document.getElementById('history')?.value || '').toLowerCase();
+    // Athlete signals
+    if (activity.includes('athlete') || activity.includes('sport') || concern.includes('sport') || concern.includes('performance')) return 'athlete';
+    // Gym signals
+    if (activity.includes('gym') || activity.includes('weight') || activity.includes('lifting') || concern.includes('gym')) return 'gym';
+    // Corporate/desk signals
+    if (activity.includes('desk') || activity.includes('office') || activity.includes('sedentary') || concern.includes('posture') || concern.includes('sitting')) return 'corporate';
+    // Rehab/anxious signals
+    if (concern.includes('chronic') || concern.includes('anxiety') || history.includes('surgery') || concern.includes('nerve')) return 'rehab';
+    return 'corporate'; // default
+  }
+
+  function detectSecondaryCohort() {
+    const primary = detectPrimaryCohort();
+    const activity = (document.getElementById('activity')?.value || '').toLowerCase();
+    const concern = (document.getElementById('concern')?.value || '').toLowerCase();
+    if (primary !== 'gym' && (activity.includes('gym') || concern.includes('gym'))) return 'gym';
+    if (primary !== 'corporate' && (activity.includes('desk') || concern.includes('posture'))) return 'corporate';
+    return null;
+  }
+  // ───────────────────────────────────────────────────────────
+
   // PROFILE SAVE
   function saveProfile() {
     const name = document.getElementById('fname').value;
@@ -1672,12 +1701,12 @@
       phone: document.getElementById('modal-phone').value.trim() || null,
       program: document.getElementById('modal-program-name').textContent || null,
       appointment_date: document.getElementById('modal-date').value || null,
-      status: 'inquiry'
+      status: 'pending'
     };
     await insertRow('appointments', modalPayload);
     closeModal();
     document.getElementById('success-modal').classList.add('show');
-    document.getElementById('success-text').textContent = 'Your inquiry for ' + document.getElementById('modal-program-name').textContent + ' has been received. We\'ll be in touch within 24 hours.';
+    document.getElementById('success-text').textContent = 'Your request for ' + document.getElementById('modal-program-name').textContent + ' has been received. Your physiotherapist will confirm your appointment time shortly.';
   };
 
   saveProfile = async function() {
@@ -1698,7 +1727,15 @@
       activity_level: document.getElementById('activity').value,
       primary_concern: document.getElementById('concern').value,
       medical_history: document.getElementById('history').value.trim() || null,
-      status: 'new'
+      status: 'new',
+      // ── Cohort classification (derived from onboarding signals) ──
+      // primary_cohort: 'corporate' | 'gym' | 'athlete' | 'rehab'
+      // secondary_cohort: optional additional cohort
+      // blend_score: 0-1, how strongly this patient maps to primary cohort
+      primary_cohort: detectPrimaryCohort(),
+      secondary_cohort: detectSecondaryCohort(),
+      blend_score: 0.7,
+      onboarding_source: 'web_portal'
     };
 
     const fullData = await insertRow('patients', profilePayload);
